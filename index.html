@@ -652,7 +652,7 @@ const usersRef = doc(
     setStatus("利用者名簿の保存エラー");
   }
 } 
-
+window.saveUsersToCloud = saveUsersToCloud;
 const LOCAL_KEY =
 "shuttleCompleteV3";
 
@@ -2089,7 +2089,28 @@ setStatus(
 }
 
 );
+onSnapshot(
+  usersRef,
+  (snap) => {
+    const remoteUsers = snap.data()?.users;
 
+    if (!Array.isArray(remoteUsers)) return;
+
+    data.users = remoteUsers;
+    window.data = data;
+
+    localBackup();
+
+    renderToday();
+    renderMaster();
+
+    setStatus("利用者名簿を共有同期しました");
+  },
+  (err) => {
+    console.error(err);
+    setStatus("利用者名簿の同期エラー");
+  }
+);
 }
 catch(err){
 
