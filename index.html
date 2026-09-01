@@ -1676,7 +1676,7 @@ mobile
 ){
 
 el.innerHTML =
-data.users.map(
+data.users.filter(u => u.name && u.name.trim()).map(
 (u,i)=>`
 
 <div class="readonlyBox">
