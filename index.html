@@ -628,7 +628,30 @@ db,
 "shared",
 "appData"
 );
+const usersRef = doc(
+  db,
+  "shared",
+  "users"
+);
+ async function saveUsersToCloud(){
+  if(!auth.currentUser) return;
 
+  try{
+    await setDoc(
+      usersRef,
+      {
+        users: data.users,
+        updatedAt: serverTimestamp()
+      },
+      { merge:true }
+    );
+
+    setStatus("利用者名簿を共有保存しました");
+  }catch(err){
+    console.error(err);
+    setStatus("利用者名簿の保存エラー");
+  }
+} 
 
 const LOCAL_KEY =
 "shuttleCompleteV3";
@@ -797,79 +820,8 @@ JSON.stringify(data)
 
 
 function save(){
-
-localBackup();
-
-
-if(
-!cloudReady
-||
-applyingRemote
-||
-!auth.currentUser
-)
-return;
-
-
-clearTimeout(
-saveTimer
-);
-
-
-setStatus(
-"保存中…"
-);
-
-
-saveTimer =
-setTimeout(
-async()=>{
-
-try{
-
-await setDoc(
-sharedRef,
-{
-
-payload:data,
-
-updatedAt:
-serverTimestamp(),
-
-updatedBy:
-auth.currentUser.uid
-
-},
-{
-merge:true
+  localBackup();
 }
-);
-
-setStatus(
-"共有保存済み"
-);
-
-}
-catch(err){
-
-console.error(err);
-
-setStatus(
-"保存エラー"
-);
-
-alert(
-"共有データを保存できませんでした。通信状態を確認してください。"
-);
-
-}
-
-},
-500
-);
-
-}
-
 
 window.save =
 save;
@@ -1775,13 +1727,13 @@ style="border:0;border-radius:9px;padding:7px 10px;background:#ececee;font-weigh
 
 <input
 value="${esc(u.name)}"
-oninput="data.users[${i}].name=this.value;save();renderToday()"
+oninput="data.users[${i}].name=this.value;save();saveUsersToCloud();renderToday()"
 placeholder="利用者名">
 
 
 <input
 value="${esc(u.address)}"
-oninput="data.users[${i}].address=this.value;save();renderToday()"
+oninput="data.users[${i}].address=this.value;save();saveUsersToCloud();renderToday()"
 placeholder="住所">
 
 
@@ -1789,13 +1741,13 @@ placeholder="住所">
 
 <input
 value="${esc(u.lat)}"
-oninput="data.users[${i}].lat=this.value;save()"
+oninput="data.users[${i}].lat=this.value;save();saveUsersToCloud()"
 placeholder="緯度">
 
 
 <input
 value="${esc(u.lon)}"
-oninput="data.users[${i}].lon=this.value;save()"
+oninput="data.users[${i}].lon=this.value;save();saveUsersToCloud()"
 placeholder="経度">
 
 </div>
@@ -1882,7 +1834,7 @@ active:false
 
 
 save();
-
+saveUsersToCloud();
 renderMaster();
 
 };
