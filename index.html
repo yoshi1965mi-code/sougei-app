@@ -1,0 +1,1521 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>送迎ルート管理</title>
+<style>
+*{box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Yu Gothic",sans-serif;margin:0;background:#f5f5f7;color:#111}
+header{position:sticky;top:0;background:#fff;padding:16px;text-align:center;font-size:21px;font-weight:800;border-bottom:1px solid #ddd;z-index:10}
+nav{display:flex;overflow-x:auto;gap:7px;padding:9px;background:#fff;border-bottom:1px solid #ddd}
+nav button{white-space:nowrap;border:0;border-radius:11px;padding:10px 12px;background:#ececee;font-weight:700}
+nav button.active{background:#111;color:#fff}
+main{max-width:900px;margin:auto;padding:12px}
+.page{display:none}.page.active{display:block}
+.card{background:#fff;border-radius:16px;padding:14px;margin-bottom:12px;box-shadow:0 1px 5px rgba(0,0,0,.07)}
+.row{display:grid;grid-template-columns:46px 1fr;gap:9px;align-items:start;padding:10px 0;border-bottom:1px solid #eee}
+.check{width:38px;height:38px;border-radius:10px;border:2px solid #999;background:#fff;font-size:22px}
+.check.on{background:#111;color:#fff;border-color:#111}
+input,select{width:100%;padding:10px;border:1px solid #ccc;border-radius:10px;font-size:16px;margin:3px 0}
+.btn{width:100%;padding:14px;border:0;border-radius:13px;background:#111;color:#fff;font-size:17px;font-weight:800;margin-top:8px}
+.btn2{width:100%;padding:12px;border:0;border-radius:13px;background:#e8e8eb;color:#111;font-size:16px;font-weight:700;margin-top:8px}
+.route{background:#f7f7f8;border-left:4px solid #111;border-radius:9px;padding:10px;margin:7px 0}
+.link{display:block;padding:12px;border-radius:11px;background:#eaf1ff;color:#124cad;text-decoration:none;font-weight:700;margin-top:8px}
+.small{font-size:13px;color:#666}
+.notice{padding:10px;background:#fff7d6;border-radius:10px;margin-bottom:10px;font-size:14px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.badge{display:inline-block;background:#eee;border-radius:999px;padding:4px 8px;font-size:12px}
+.topline{display:flex;justify-content:space-between;align-items:center}
+</style>
+</head>
+
+<body>
+
+<header>送迎ルート管理</header>
+
+<nav>
+<button class="active" data-page="today">本日の利用者</button>
+<button data-page="route">送迎ルート</button>
+<button data-page="staff">職員担当</button>
+<button data-page="send">転送・Gmail</button>
+<button data-page="master">利用者名簿</button>
+<button data-page="settings">設定</button>
+</nav>
+
+<main>
+
+<section id="today" class="page active">
+<div class="card">
+
+<div class="topline">
+<h2>本日の利用者</h2>
+<span id="countBadge" class="badge">0 / 10名</span>
+</div>
+
+<div class="notice">
+利用する方をタップして ✓ にします。1日最大10名です。
+</div>
+
+<div id="todayList"></div>
+
+<button class="btn" id="buildBtn">
+送迎ルート一括更新
+</button>
+
+<button class="btn2" id="clearBtn">
+本日の選択を全解除
+</button>
+
+</div>
+</section>
+
+
+<section id="route" class="page">
+<div class="card">
+<h2>送迎ルート</h2>
+<div id="routeView"></div>
+</div>
+</section>
+
+
+<section id="staff" class="page">
+<div class="card">
+
+<h2>職員担当</h2>
+
+<div class="notice">
+担当する職員を ✓ にし、担当車とGmailアドレスを設定します。
+</div>
+
+<div id="staffList"></div>
+
+</div>
+</section>
+
+
+<section id="send" class="page">
+<div class="card">
+
+<h2>転送・Gmail</h2>
+
+<div id="sendList"></div>
+
+</div>
+</section>
+
+
+<section id="master" class="page">
+<div class="card">
+
+<h2>利用者名簿</h2>
+
+<div class="notice">
+利用者の名前・住所・緯度・経度を変更できます。
+最大30名まで登録できます。
+</div>
+
+<div id="masterList"></div>
+
+<button class="btn" id="addUserBtn">
+利用者を追加
+</button>
+
+<div class="small" style="margin-top:8px;">
+利用者名簿は最大30名まで登録できます。
+</div>
+
+</div>
+</section>
+
+
+<section id="settings" class="page">
+<div class="card">
+
+<h2>設定</h2>
+
+<label>施設住所</label>
+<input id="facilityAddress">
+
+<div class="grid2">
+
+<div>
+<label>施設緯度</label>
+<input id="facilityLat">
+</div>
+
+<div>
+<label>施設経度</label>
+<input id="facilityLon">
+</div>
+
+</div>
+
+<label>車台数</label>
+
+<select id="carCount">
+<option value="1">1台</option>
+<option value="2">2台</option>
+<option value="3">3台</option>
+</select>
+
+<button class="btn" id="saveSettingsBtn">
+設定を保存
+</button>
+
+</div>
+</section>
+
+</main>
+
+
+<script>
+
+/* ===============================
+   初期データ
+================================ */
+
+const INITIAL_DATA = {
+
+facility:{
+address:"横浜市青葉区荏田西2-29-24 2階",
+lat:35.5537255,
+lon:139.552457,
+carCount:2
+},
+
+users:[
+
+{
+name:"阿部千鶴子",
+address:"横浜市青葉区美しが丘4-2-10",
+lat:35.57955248193554,
+lon:139.552545914311,
+active:false
+},
+
+{
+name:"青山昭次",
+address:"横浜市青葉区大場町378-23",
+lat:35.56413263447171,
+lon:139.536466856484,
+active:false
+},
+
+{
+name:"梅津よそみ",
+address:"横浜市青葉区柿の木台24-33",
+lat:35.551231077079635,
+lon:139.531944760434,
+active:false
+},
+
+{
+name:"岡　紀代子",
+address:"横浜市青葉区榎が丘21-70",
+lat:35.54011372662288,
+lon:139.510383453944,
+active:false
+},
+
+{
+name:"風間美榮子",
+address:"横浜市青葉区美しが丘1-4-6 美しが丘ルピナス507",
+lat:35.57728977405133,
+lon:139.556673892035,
+active:false
+},
+
+{
+name:"種市一三",
+address:"横浜市青葉区鉄町512-4",
+lat:35.56233452510054,
+lon:139.522747379196,
+active:false
+},
+
+{
+name:"種市保子",
+address:"横浜市青葉区鉄町512-4",
+lat:35.56233452510054,
+lon:139.522747379196,
+active:false
+},
+
+{
+name:"谷口節子",
+address:"横浜市都筑区佐江戸町1735-1ハイマートアサヒ壱番館101",
+lat:35.515488533294366,
+lon:139.558219439321,
+active:false
+},
+
+{
+name:"徳江美好",
+address:"横浜市青葉区荏田町446-13",
+lat:35.55778669193621,
+lon:139.558141299722,
+active:false
+},
+
+{
+name:"徳江美好",
+address:"横浜市青葉区たちばな台1-15-37",
+lat:35.55792630222353,
+lon:139.516501938429,
+active:false
+},
+
+{
+name:"徳江和子",
+address:"横浜市青葉区美しが丘西2-11-5 ラミフェイス美しが丘西101",
+lat:35.58799469315437,
+lon:139.532176298971,
+active:false
+},
+
+{
+name:"戸塚慶子",
+address:"横浜市青葉区大場町156-48",
+lat:35.56096047458533,
+lon:139.53413848278,
+active:false
+},
+
+{
+name:"中村一雄",
+address:"横浜市都筑区茅ケ崎南4-12-2-102",
+lat:35.540266032260604,
+lon:139.572358191089,
+active:false
+},
+
+{
+name:"原　貞和",
+address:"横浜市青葉区みたけ台41-4 リヴィエールM-101",
+lat:35.553194013261525,
+lon:139.522396902057,
+active:false
+},
+
+{
+name:"深沢義弘",
+address:"横浜市青葉区千草台52-45",
+lat:35.5355409969742,
+lon:139.531324057793,
+active:false
+},
+
+{
+name:"丸山義信",
+address:"横浜市都筑区中川3-24-21",
+lat:35.56197455595566,
+lon:139.56443472511,
+active:false
+},
+
+{
+name:"水下健次",
+address:"横浜市青葉区荏田西1-19-3 サーパス市ヶ尾504",
+lat:35.5533131935753,
+lon:139.546261288522,
+active:false
+},
+
+{
+name:"依田敬子",
+address:"横浜市青葉区あざみ野南3-13-21",
+lat:35.56484952190558,
+lon:139.54627626744,
+active:false
+},
+
+{
+name:"若林祐治",
+address:"横浜市都筑区佐江戸町383 ビックヴァン鴨居503",
+lat:35.51498762253094,
+lon:139.559488455446,
+active:false
+}
+
+],
+
+staff:[
+
+{name:"職員1",car:"車1",gmail:"",active:false},
+{name:"職員2",car:"車2",gmail:"",active:false},
+{name:"職員3",car:"車3",gmail:"",active:false},
+{name:"職員4",car:"車1",gmail:"",active:false},
+{name:"職員5",car:"車2",gmail:"",active:false},
+{name:"職員6",car:"車3",gmail:"",active:false},
+{name:"職員7",car:"車1",gmail:"",active:false},
+{name:"職員8",car:"車2",gmail:"",active:false},
+{name:"職員9",car:"車3",gmail:"",active:false},
+
+{
+name:"金築職員10",
+car:"車1",
+gmail:"yoshi1965.mi@gmail.com",
+active:true
+}
+
+],
+
+routes:[]
+
+};
+
+
+/* ===============================
+   保存データを読み込み
+================================ */
+
+let data;
+
+try{
+
+const saved =
+localStorage.getItem("shuttleCompleteV3");
+
+data =
+saved
+? JSON.parse(saved)
+: JSON.parse(JSON.stringify(INITIAL_DATA));
+
+}catch(e){
+
+data =
+JSON.parse(JSON.stringify(INITIAL_DATA));
+
+}
+
+
+/* ===============================
+   保存
+================================ */
+
+function save(){
+
+localStorage.setItem(
+"shuttleCompleteV3",
+JSON.stringify(data)
+);
+
+}
+
+
+/* ===============================
+   文字変換
+================================ */
+
+function esc(s){
+
+return String(s ?? "")
+.replace(
+/[&<>"']/g,
+m => ({
+"&":"&amp;",
+"<":"&lt;",
+">":"&gt;",
+'"':"&quot;",
+"'":"&#039;"
+}[m])
+);
+
+}
+
+
+/* ===============================
+   画面切替
+================================ */
+
+function showPage(id){
+
+document
+.querySelectorAll("nav button")
+.forEach(
+b =>
+b.classList.toggle(
+"active",
+b.dataset.page === id
+)
+);
+
+document
+.querySelectorAll(".page")
+.forEach(
+p =>
+p.classList.toggle(
+"active",
+p.id === id
+)
+);
+
+render();
+
+}
+
+
+document
+.querySelectorAll("nav button")
+.forEach(
+b =>
+b.onclick =
+() => showPage(b.dataset.page)
+);
+
+
+/* ===============================
+   本日の利用者
+================================ */
+
+function countSelected(){
+
+return data.users
+.filter(u => u.active)
+.length;
+
+}
+
+
+window.toggleUser =
+function(i){
+
+if(
+!data.users[i].active &&
+countSelected() >= 10
+){
+
+alert(
+"本日の利用者は最大10名までです。"
+);
+
+return;
+
+}
+
+data.users[i].active =
+!data.users[i].active;
+
+save();
+
+renderToday();
+
+};
+
+
+function renderToday(){
+
+document
+.getElementById("countBadge")
+.textContent =
+`${countSelected()} / 10名`;
+
+
+document
+.getElementById("todayList")
+.innerHTML =
+
+data.users
+.map(
+(u,i) => `
+
+<div class="row">
+
+<button
+class="check ${u.active ? "on" : ""}"
+onclick="toggleUser(${i})">
+
+${u.active ? "✓" : "□"}
+
+</button>
+
+<div>
+
+<b>${esc(u.name)}</b>
+
+<br>
+
+<span class="small">
+${esc(u.address)}
+</span>
+
+</div>
+
+</div>
+
+`
+)
+.join("");
+
+}
+
+
+/* ===============================
+   距離計算
+================================ */
+
+function dist(a,b){
+
+return Math.hypot(
+
+Number(a.lat) -
+Number(b.lat),
+
+Number(a.lon) -
+Number(b.lon)
+
+);
+
+}
+
+
+/* ===============================
+   ルート作成
+================================ */
+
+function buildRoutes(){
+
+const chosen =
+data.users.filter(
+u =>
+u.active &&
+u.name &&
+u.address &&
+u.lat !== "" &&
+u.lon !== ""
+);
+
+
+if(!chosen.length){
+
+alert(
+"本日の利用者を選択してください。"
+);
+
+return;
+
+}
+
+
+const n =
+Math.max(
+1,
+Math.min(
+3,
+Number(data.facility.carCount) || 1
+)
+);
+
+
+const cars =
+Array.from(
+{length:n},
+() => []
+);
+
+
+/* 車へ振り分け */
+
+chosen.forEach(
+(u,i) => {
+
+cars[i % n].push(u);
+
+}
+);
+
+
+/* 最寄り順 */
+
+data.routes =
+cars.map(
+(list,idx) => {
+
+let remain =
+[...list];
+
+let ordered = [];
+
+let cur = {
+
+lat:data.facility.lat,
+lon:data.facility.lon
+
+};
+
+
+while(remain.length){
+
+let best = 0;
+
+
+for(
+let i=1;
+i<remain.length;
+i++
+){
+
+if(
+dist(cur,remain[i]) <
+dist(cur,remain[best])
+){
+
+best = i;
+
+}
+
+}
+
+
+const u =
+remain.splice(best,1)[0];
+
+ordered.push(u);
+
+cur = u;
+
+}
+
+
+return {
+
+car:`車${idx+1}`,
+users:ordered
+
+};
+
+}
+);
+
+
+save();
+
+showPage("route");
+
+}
+
+
+/* 更新ボタン */
+
+document
+.getElementById("buildBtn")
+.onclick =
+buildRoutes;
+
+
+/* 全解除 */
+
+document
+.getElementById("clearBtn")
+.onclick =
+() => {
+
+data.users.forEach(
+u => u.active = false
+);
+
+data.routes = [];
+
+save();
+
+render();
+
+};
+
+
+/* ===============================
+   GoogleマップURL
+================================ */
+
+function mapUrl(
+route,
+reverse = false
+){
+
+const f =
+data.facility;
+
+
+const arr =
+reverse
+? [...route.users].reverse()
+: route.users;
+
+
+const wp =
+arr
+.map(
+u =>
+encodeURIComponent(
+u.address
+)
+)
+.join("%7C");
+
+
+return (
+
+"https://www.google.com/maps/dir/?api=1" +
+
+"&origin=" +
+encodeURIComponent(
+f.address
+) +
+
+"&destination=" +
+encodeURIComponent(
+f.address
+) +
+
+"&waypoints=" +
+wp +
+
+"&travelmode=driving"
+
+);
+
+}
+
+
+/* ===============================
+   送迎ルート表示
+================================ */
+
+function renderRoutes(){
+
+const el =
+document.getElementById(
+"routeView"
+);
+
+
+if(!data.routes.length){
+
+el.innerHTML =
+'<p class="small">まだルートがありません。</p>';
+
+return;
+
+}
+
+
+el.innerHTML =
+
+data.routes
+.map(
+r => `
+
+<div class="card">
+
+<h3>${r.car}</h3>
+
+<b>
+迎え：施設 → 利用者 → 施設
+</b>
+
+<div class="route">
+
+出発　施設
+
+<br>
+
+<span class="small">
+${esc(data.facility.address)}
+</span>
+
+</div>
+
+
+${
+
+r.users
+.map(
+(u,i) => `
+
+<div class="route">
+
+${i+1}　
+${esc(u.name)}
+
+<br>
+
+<span class="small">
+${esc(u.address)}
+</span>
+
+</div>
+
+`
+)
+.join("")
+
+}
+
+
+<div class="route">
+到着　施設
+</div>
+
+
+<a
+class="link"
+target="_blank"
+href="${mapUrl(r,false)}">
+
+迎え Googleマップを開く
+
+</a>
+
+
+<br>
+
+
+<b>
+送り：施設 → 利用者 → 施設
+</b>
+
+
+<div class="route">
+出発　施設
+</div>
+
+
+${
+
+[...r.users]
+.reverse()
+.map(
+(u,i) => `
+
+<div class="route">
+
+${i+1}　
+${esc(u.name)}
+
+<br>
+
+<span class="small">
+${esc(u.address)}
+</span>
+
+</div>
+
+`
+)
+.join("")
+
+}
+
+
+<div class="route">
+到着　施設
+</div>
+
+
+<a
+class="link"
+target="_blank"
+href="${mapUrl(r,true)}">
+
+送り Googleマップを開く
+
+</a>
+
+</div>
+
+`
+)
+.join("");
+
+}
+
+
+/* ===============================
+   職員担当
+================================ */
+
+window.toggleStaff =
+function(i){
+
+data.staff[i].active =
+!data.staff[i].active;
+
+save();
+
+renderStaff();
+
+renderSend();
+
+};
+
+
+function renderStaff(){
+
+document
+.getElementById(
+"staffList"
+)
+.innerHTML =
+
+data.staff
+.map(
+(s,i) => `
+
+<div class="row">
+
+<button
+class="check ${s.active ? "on" : ""}"
+onclick="toggleStaff(${i})">
+
+${s.active ? "✓" : "□"}
+
+</button>
+
+
+<div>
+
+<input
+value="${esc(s.name)}"
+oninput="
+data.staff[${i}].name=this.value;
+save();
+"
+placeholder="職員名"
+>
+
+
+<select
+onchange="
+data.staff[${i}].car=this.value;
+save();
+renderSend();
+"
+>
+
+<option
+${s.car==="車1" ? "selected" : ""}>
+車1
+</option>
+
+<option
+${s.car==="車2" ? "selected" : ""}>
+車2
+</option>
+
+<option
+${s.car==="車3" ? "selected" : ""}>
+車3
+</option>
+
+</select>
+
+
+<input
+value="${esc(s.gmail)}"
+oninput="
+data.staff[${i}].gmail=this.value;
+save();
+"
+placeholder="Gmailアドレス"
+>
+
+</div>
+
+</div>
+
+`
+)
+.join("");
+
+}
+
+
+/* ===============================
+   Gmail作成
+================================ */
+
+function composeUrl(
+staff,
+route
+){
+
+const subject =
+
+`本日の送迎ルート ${staff.car} 担当：${staff.name}`;
+
+
+const lines = [
+
+`${staff.name}さん`,
+
+"",
+
+`本日の担当車：${staff.car}`,
+
+"",
+
+"【迎え】",
+
+`出発：${data.facility.address}`,
+
+...route.users.map(
+(u,i) =>
+`${i+1}. ${u.name} ${u.address}`
+),
+
+`到着：${data.facility.address}`,
+
+"",
+
+`迎えGoogleマップ：${mapUrl(route,false)}`,
+
+"",
+
+"【送り】",
+
+`出発：${data.facility.address}`,
+
+...[...route.users]
+.reverse()
+.map(
+(u,i) =>
+`${i+1}. ${u.name} ${u.address}`
+),
+
+`到着：${data.facility.address}`,
+
+"",
+
+`送りGoogleマップ：${mapUrl(route,true)}`
+
+];
+
+
+return (
+
+"https://mail.google.com/mail/?view=cm&fs=1" +
+
+"&to=" +
+encodeURIComponent(
+staff.gmail
+) +
+
+"&su=" +
+encodeURIComponent(
+subject
+) +
+
+"&body=" +
+encodeURIComponent(
+lines.join("\n")
+)
+
+);
+
+}
+
+
+/* ===============================
+   転送・Gmail
+================================ */
+
+function renderSend(){
+
+const selected =
+data.staff.filter(
+s => s.active
+);
+
+
+const el =
+document.getElementById(
+"sendList"
+);
+
+
+if(!selected.length){
+
+el.innerHTML =
+'<p class="small">職員担当で担当者を選択してください。</p>';
+
+return;
+
+}
+
+
+el.innerHTML =
+
+selected
+.map(
+s => {
+
+const r =
+data.routes.find(
+x => x.car === s.car
+);
+
+
+if(!r){
+
+return `
+
+<div class="card">
+
+<b>${esc(s.name)}</b>
+（${esc(s.car)}）
+
+<p class="small">
+この車のルートがありません。
+</p>
+
+</div>
+
+`;
+
+}
+
+
+return `
+
+<div class="card">
+
+<h3>
+${esc(s.name)}
+/
+${esc(s.car)}
+</h3>
+
+
+${
+
+r.users
+.map(
+(u,i) => `
+
+<div class="route">
+
+${i+1}.
+${esc(u.name)}
+
+<br>
+
+<span class="small">
+${esc(u.address)}
+</span>
+
+</div>
+
+`
+)
+.join("")
+
+}
+
+
+<a
+class="link"
+target="_blank"
+href="${mapUrl(r,false)}">
+
+迎え Googleマップ
+
+</a>
+
+
+<a
+class="link"
+target="_blank"
+href="${mapUrl(r,true)}">
+
+送り Googleマップ
+
+</a>
+
+
+<a
+class="link"
+target="_blank"
+href="${composeUrl(s,r)}">
+
+Gmail作成
+
+</a>
+
+</div>
+
+`;
+
+}
+)
+.join("");
+
+}
+
+
+/* ===============================
+   利用者名簿
+================================ */
+
+function renderMaster(){
+
+document
+.getElementById(
+"masterList"
+)
+.innerHTML =
+
+data.users
+.map(
+(u,i) => `
+
+<div class="card">
+
+<div class="topline">
+
+<b>
+${i+1}.
+${esc(u.name || "新規利用者")}
+</b>
+
+
+<button
+type="button"
+onclick="deleteUser(${i})"
+style="
+border:0;
+border-radius:9px;
+padding:7px 10px;
+background:#ececee;
+font-weight:700;
+">
+
+削除
+
+</button>
+
+</div>
+
+
+<input
+value="${esc(u.name)}"
+oninput="
+data.users[${i}].name=this.value;
+save();
+renderToday();
+"
+placeholder="利用者名"
+>
+
+
+<input
+value="${esc(u.address)}"
+oninput="
+data.users[${i}].address=this.value;
+save();
+renderToday();
+"
+placeholder="住所"
+>
+
+
+<div class="grid2">
+
+
+<input
+value="${esc(u.lat)}"
+oninput="
+data.users[${i}].lat=this.value;
+save();
+"
+placeholder="緯度"
+>
+
+
+<input
+value="${esc(u.lon)}"
+oninput="
+data.users[${i}].lon=this.value;
+save();
+"
+placeholder="経度"
+>
+
+
+</div>
+
+</div>
+
+`
+)
+.join("");
+
+}
+
+
+/* ===============================
+   利用者削除
+================================ */
+
+window.deleteUser =
+function(i){
+
+if(
+!confirm(
+"この利用者を名簿から削除しますか？"
+)
+){
+
+return;
+
+}
+
+
+data.users.splice(
+i,
+1
+);
+
+save();
+
+render();
+
+};
+
+
+/* ===============================
+   利用者追加
+================================ */
+
+document
+.getElementById(
+"addUserBtn"
+)
+.onclick =
+() => {
+
+
+if(
+data.users.length >= 30
+){
+
+alert(
+"利用者名簿は最大30名までです。"
+);
+
+return;
+
+}
+
+
+data.users.push({
+
+name:"",
+address:"",
+lat:"",
+lon:"",
+active:false
+
+});
+
+
+save();
+
+renderMaster();
+
+alert(
+"新しい利用者欄を追加しました。"
+);
+
+};
+
+
+/* ===============================
+   設定
+================================ */
+
+function renderSettings(){
+
+facilityAddress.value =
+data.facility.address;
+
+facilityLat.value =
+data.facility.lat;
+
+facilityLon.value =
+data.facility.lon;
+
+carCount.value =
+data.facility.carCount;
+
+}
+
+
+document
+.getElementById(
+"saveSettingsBtn"
+)
+.onclick =
+() => {
+
+
+data.facility.address =
+facilityAddress.value.trim();
+
+
+data.facility.lat =
+Number(
+facilityLat.value
+);
+
+
+data.facility.lon =
+Number(
+facilityLon.value
+);
+
+
+data.facility.carCount =
+Number(
+carCount.value
+);
+
+
+save();
+
+alert(
+"設定を保存しました。"
+);
+
+};
+
+
+/* ===============================
+   全画面更新
+================================ */
+
+function render(){
+
+renderToday();
+
+renderRoutes();
+
+renderStaff();
+
+renderSend();
+
+renderMaster();
+
+renderSettings();
+
+}
+
+
+/* アプリ起動 */
+
+render();
+
+</script>
+
+</body>
+</html>
