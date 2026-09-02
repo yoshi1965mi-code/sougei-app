@@ -1727,13 +1727,13 @@ style="border:0;border-radius:9px;padding:7px 10px;background:#ececee;font-weigh
 
 <input
 value="${esc(u.name)}"
-oninput="data.users[${i}].name=this.value;save();saveUsersToCloud();renderToday()"
+oninput="data.users[${i}].name=this.value;save();" onchange="saveUsersToCloud();renderToday()"
 placeholder="利用者名">
 
 
 <input
 value="${esc(u.address)}"
-oninput="data.users[${i}].address=this.value;save();saveUsersToCloud();renderToday()"
+oninput="data.users[${i}].address=this.value;save();" onchange="saveUsersToCloud();renderToday()"
 placeholder="住所">
 
 
@@ -1741,7 +1741,7 @@ placeholder="住所">
 
 <input
 value="${esc(u.lat)}"
-oninput="data.users[${i}].lat=this.value;save();saveUsersToCloud()"
+oninput="data.users[${i}].lat=this.value;save();" onchange="saveUsersToCloud()"
 placeholder="緯度">
 
 
