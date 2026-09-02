@@ -2102,7 +2102,7 @@ onSnapshot(
     localBackup();
 
     renderToday();
-    renderMaster();
+    if (document.activeElement?.tagName !== "INPUT") renderMaster();
 
     setStatus("利用者名簿を共有同期しました");
   },
