@@ -375,6 +375,15 @@ class="badge">
 
 <div id="todayList">
 </div>
+<div class="notice" style="margin-top:12px">
+<label for="departureMode">出発地点</label>
+<select id="departureMode" style="width:100%;padding:10px">
+<option value="facility">施設から出発</option>
+<option value="current">現在地から出発（GPS）</option>
+</select>
+<button type="button" class="btn2" id="gpsBtn">現在地を取得</button>
+<div id="gpsStatus" role="status" aria-live="polite">現在地は端末内だけで使用します。</div>
+</div>
 
 <button
 class="btn"
@@ -402,6 +411,17 @@ class="page">
 送迎ルート
 </h2>
 
+<div class="card" id="reroutePanel">
+<h3>送迎途中・現在地から再出発</h3>
+<p class="small">停車中に操作してください。送迎済みの方はチェックを外してください。ここでの選択は共有名簿に反映されません。</p>
+<button class="btn2" id="loadRemaining">本日の利用者を選択候補にする</button>
+<div id="remainingList"></div>
+<label for="nextStop">次に向かう利用者（指定なしなら近い順）</label>
+<select id="nextStop" style="width:100%"></select>
+<label><input type="checkbox" id="returnFacility" checked> 最後に施設へ戻る</label>
+<button class="btn" id="rerouteBtn">現在地を取得してルート再計算</button>
+<p id="rerouteStatus" role="status"></p><div id="rerouteResult"></div>
+</div>
 <div id="routeView">
 </div>
 
@@ -936,6 +956,7 @@ return;
 
 data.users[i].active =
 !data.users[i].active;
+gpsRoutes=null;
 
 
 save();
@@ -1024,7 +1045,84 @@ Number(b.lon)
 }
 
 
+let gpsStart = null;
+let gpsRoutes = null;
+let gpsPending = false;
+let gpsGeneration = 0;
+const departureMode = document.getElementById("departureMode");
+const gpsStatus = document.getElementById("gpsStatus");
+let remaining = new Set();
+let rerouteGeneration=0;
+const remKey=u=>JSON.stringify([u.name,u.address,u.lat,u.lon]);
+const validStop=u=>u.name&&u.address&&u.lat!==""&&u.lon!==""&&u.lat!=null&&u.lon!=null&&Number.isFinite(Number(u.lat))&&Number.isFinite(Number(u.lon));
+function renderRemaining(){
+ const list=document.getElementById("remainingList"), next=document.getElementById("nextStop"), previous=next.value;
+ list.replaceChildren(); next.replaceChildren(new Option("指定なし（近い順）",""));
+ data.users.filter(validStop).forEach(u=>{
+ const key=remKey(u), label=document.createElement("label"), cb=document.createElement("input");
+ cb.type="checkbox";cb.checked=remaining.has(key);label.style.display="block";
+ cb.onchange=()=>{if(cb.checked){if(remaining.size>=10){cb.checked=false;alert("最大10名です。");return;}remaining.add(key);}else remaining.delete(key);invalidateReroute();renderRemaining();};
+ label.append(cb,document.createTextNode(" "+u.name));list.append(label);
+ if(cb.checked)next.add(new Option(u.name,key));
+ });
+ if([...next.options].some(o=>o.value===previous))next.value=previous;
+}
+function invalidateReroute(){rerouteGeneration++;document.getElementById("rerouteResult").replaceChildren();document.getElementById("rerouteStatus").textContent="";document.getElementById("rerouteBtn").disabled=false;}
+document.getElementById("loadRemaining").onclick=()=>{remaining=new Set(data.users.filter(u=>u.active&&validStop(u)).slice(0,10).map(remKey));invalidateReroute();renderRemaining();};
+document.getElementById("nextStop").onchange=invalidateReroute;
+document.getElementById("returnFacility").onchange=invalidateReroute;
+document.getElementById("logoutBtn").addEventListener("click",()=>{remaining.clear();invalidateReroute();renderRemaining();});
+document.getElementById("rerouteBtn").onclick=()=>{
+ const stops=data.users.filter(u=>validStop(u)&&remaining.has(remKey(u))), first=document.getElementById("nextStop").value, back=document.getElementById("returnFacility").checked;
+ if(!stops.length){alert("次に向かう利用者様を選択してください。");return;}
+ if(back&&!data.facility.address){alert("施設住所を設定してください。");return;}
+ invalidateReroute();const gen=rerouteGeneration, status=document.getElementById("rerouteStatus"), btn=document.getElementById("rerouteBtn");
+ if(!navigator.geolocation){status.textContent="位置情報に対応していません。";return;}
+ btn.disabled=true;status.textContent="現在地を取得中…";
+ navigator.geolocation.getCurrentPosition(p=>{
+ if(gen!==rerouteGeneration)return;btn.disabled=false;
+ let cur={lat:p.coords.latitude,lon:p.coords.longitude}, origin=cur.lat+","+cur.lon, ordered=[], rest=[...stops];
+ if(first){const i=rest.findIndex(u=>remKey(u)===first);if(i>=0){cur=rest.splice(i,1)[0];ordered.push(cur);}}
+ while(rest.length){let best=0;for(let i=1;i<rest.length;i++)if(dist(cur,rest[i])<dist(cur,rest[best]))best=i;cur=rest.splice(best,1)[0];ordered.push(cur);}
+ const out=document.getElementById("rerouteResult");out.replaceChildren();
+ const summary=document.createElement("p");summary.textContent=["現在地",...ordered.map(u=>u.name),...(back?["施設"]:[])].join(" → ");out.append(summary);
+ const destinations=ordered.map(u=>u.address);if(back)destinations.push(data.facility.address);
+ // Individual legs avoid mobile Google Maps waypoint limits.
+ destinations.forEach((dest,i)=>{const a=document.createElement("a");a.className="link";a.style.display="block";a.textContent=(i+1)+". "+(i<ordered.length?ordered[i].name:"施設")+"へナビ";a.href="https://www.google.com/maps/dir/?api=1&destination="+encodeURIComponent(dest)+"&travelmode=driving&dir_action=navigate";out.append(a);});
+ status.textContent="現在地からの順番を計算しました。各ナビは開いた時点の現在地から案内します（端末内のみ）。";
+ },()=>{if(gen!==rerouteGeneration)return;btn.disabled=false;status.textContent="現在地を取得できません。位置情報の許可を確認してください。";},{enableHighAccuracy:true,timeout:15000,maximumAge:0});
+};
+function resetGps(){
+  gpsGeneration++; gpsStart=null; gpsRoutes=null; gpsPending=false;
+  document.getElementById("gpsBtn").disabled=false;
+  gpsStatus.textContent="現在地は端末内だけで使用します。";
+}
+departureMode.onchange=()=>{resetGps(); renderRoutes();};
+function getGps(){
+  departureMode.value="current";
+  gpsRoutes=null; gpsStart=null; renderRoutes();
+  if(!navigator.geolocation){gpsStatus.textContent="この端末は位置情報に対応していません。";return;}
+  const generation=++gpsGeneration;
+  gpsPending=true; document.getElementById("gpsBtn").disabled=true;
+  gpsStatus.textContent="現在地を取得中…";
+  navigator.geolocation.getCurrentPosition(p=>{
+    if(generation!==gpsGeneration)return;
+    gpsPending=false; document.getElementById("gpsBtn").disabled=false;
+    gpsStart={lat:p.coords.latitude,lon:p.coords.longitude};
+    gpsStatus.textContent="現在地を取得しました。ルート一括更新を押してください。";
+  },()=>{
+    if(generation!==gpsGeneration)return;
+    gpsPending=false; document.getElementById("gpsBtn").disabled=false;
+    gpsStatus.textContent="現在地を取得できません。位置情報の許可を確認して再試行してください。";
+  },{enableHighAccuracy:true,timeout:15000,maximumAge:0});
+}
+document.getElementById("gpsBtn").onclick=getGps;
+document.getElementById("logoutBtn").addEventListener("click",()=>{resetGps();departureMode.value="facility";renderRoutes();});
 function buildRoutes(){
+const useGps=departureMode.value==="current";
+if(useGps && !gpsStart){alert(gpsPending?"現在地を取得中です。":"先に現在地を取得してください。");return;}
+if(!useGps) gpsRoutes=null;
+
 
 const chosen =
 data.users.filter(
@@ -1081,7 +1179,7 @@ cars[i%n].push(u)
 );
 
 
-data.routes =
+const builtRoutes =
 cars.map(
 (list,idx)=>{
 
@@ -1093,11 +1191,8 @@ let ordered =
 
 let cur = {
 
-lat:
-data.facility.lat,
-
-lon:
-data.facility.lon
+lat: useGps ? gpsStart.lat : data.facility.lat,
+lon: useGps ? gpsStart.lon : data.facility.lon
 
 };
 
@@ -1160,11 +1255,10 @@ ordered
 );
 
 
-save();
-
-showPage(
-"route"
-);
+if(useGps){gpsRoutes=builtRoutes;}
+else{data.routes=builtRoutes;save();}
+renderRoutes();
+showPage("route");
 
 }
 
@@ -1185,6 +1279,7 @@ u=>u.active=false
 );
 
 data.routes=[];
+resetGps();
 
 save();
 
@@ -1226,7 +1321,17 @@ return`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(f.addr
 }
 
 
+function gpsMapUrl(route,reverse=false){
+  const ordered=route.users;
+  const wp=ordered.map(u=>encodeURIComponent(u.address)).join("%7C");
+  return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(gpsStart.lat+","+gpsStart.lon)}&destination=${encodeURIComponent(data.facility.address)}&waypoints=${wp}&travelmode=driving`;
+}
 function renderRoutes(){
+renderRemaining();
+const local=!!(gpsRoutes && gpsStart && departureMode.value==="current");
+const displayedRoutes=local?gpsRoutes:data.routes;
+const startLabel=local?"現在地":"施設";
+
 
 const el =
 document.getElementById(
@@ -1235,7 +1340,7 @@ document.getElementById(
 
 
 if(
-!data.routes.length
+!displayedRoutes.length
 ){
 
 el.innerHTML =
@@ -1247,7 +1352,7 @@ return;
 
 
 el.innerHTML =
-data.routes.map(
+(local?'<p class="notice">現在地ルート（この端末のみ・転送対象外）</p>':'') + displayedRoutes.map(
 r=>`
 
 <div class="card">
@@ -1257,17 +1362,17 @@ ${r.car}
 </h3>
 
 <b>
-迎え：施設 → 利用者 → 施設
+迎え：${startLabel} → 利用者 → 施設
 </b>
 
 <div class="route">
 
-出発　施設
+出発　${startLabel}
 
 <br>
 
 <span class="small">
-${esc(data.facility.address)}
+${local?"取得した現在地":esc(data.facility.address)}
 </span>
 
 </div>
@@ -1302,7 +1407,7 @@ ${esc(u.address)}
 <a
 class="link"
 
-href="${mapUrl(r,false)}">
+href="${local?gpsMapUrl(r,false):mapUrl(r,false)}">
 
 迎え Googleマップを開く
 
@@ -1311,17 +1416,16 @@ href="${mapUrl(r,false)}">
 <br>
 
 <b>
-送り：施設 → 利用者 → 施設
+送り：${startLabel} → 利用者 → 施設
 </b>
 
 <div class="route">
-出発　施設
+出発　${startLabel}
 </div>
 
 ${
 
-[...r.users]
-.reverse()
+(local?r.users:[...r.users].reverse())
 .map(
 (u,i)=>`
 
@@ -1350,7 +1454,7 @@ ${esc(u.address)}
 <a
 class="link"
 
-href="${mapUrl(r,true)}">
+href="${local?gpsMapUrl(r,true):mapUrl(r,true)}">
 
 送り Googleマップを開く
 
